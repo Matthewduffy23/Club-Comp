@@ -143,14 +143,14 @@ def draw_radar(labels, A_r, B_r, teamA_name, teamA_sub, teamB_name, teamB_sub, t
 
     # ---- NO MIDDLE TITLE ----
     # Left/Right team headers (bigger)
-    fig.text(0.10, 0.965, teamA_name, ha="left", va="top",
+    fig.text(0.10, 0.95, teamA_name, ha="left", va="top",
              fontsize=26, fontweight="bold", color=COL_A)
-    fig.text(0.10, 0.932, teamA_sub, ha="left", va="top",
+    fig.text(0.10, 0.90, teamA_sub, ha="left", va="top",
              fontsize=11, color=SUB_COLOR)
 
-    fig.text(0.90, 0.965, teamB_name, ha="right", va="top",
+    fig.text(0.90, 0.95, teamB_name, ha="right", va="top",
              fontsize=26, fontweight="bold", color=COL_B)
-    fig.text(0.90, 0.932, teamB_sub, ha="right", va="top",
+    fig.text(0.90, 0.90, teamB_sub, ha="right", va="top",
              fontsize=11, color=SUB_COLOR)
 
     return fig
