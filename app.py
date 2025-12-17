@@ -170,6 +170,13 @@ with st.sidebar:
 
     n_teams = st.number_input("How many teams will you enter?", min_value=2, max_value=50, value=6, step=1)
 
+    # Optional: deliberate reset button (so resets happen only when you want)
+    if st.button("Reset team inputs"):
+        st.session_state.pop("teams_df", None)
+        st.session_state.pop("prev_n_teams", None)
+        st.session_state.pop("prev_metric_names", None)
+        st.rerun()
+
     st.divider()
     st.subheader("Metrics + Bottom/Top")
     st.caption("Edit Bottom/Top and whether lower values should score higher on the radar.")
@@ -196,38 +203,55 @@ st.session_state.metrics_df = metrics_df
 metric_names = metrics_df["Metric"].tolist()
 team_cols = ["Team"] + metric_names
 
+# Track previous settings to avoid wiping inputs on rerun
+if "prev_n_teams" not in st.session_state:
+    st.session_state.prev_n_teams = int(n_teams)
+if "prev_metric_names" not in st.session_state:
+    st.session_state.prev_metric_names = metric_names[:]
+
+# Initialize teams_df once
 if "teams_df" not in st.session_state:
-    st.session_state.teams_df = pd.DataFrame([{"Team": f"Team {i+1}"} for i in range(int(n_teams))])
+    base = pd.DataFrame([{"Team": f"Team {i+1}"} for i in range(int(n_teams))])
     for m in metric_names:
-        st.session_state.teams_df[m] = np.nan
+        base[m] = np.nan
+    st.session_state.teams_df = base
 
-# Keep row count synced with n_teams
-teams_df = st.session_state.teams_df.copy()
-if len(teams_df) < int(n_teams):
-    add = int(n_teams) - len(teams_df)
-    new_rows = pd.DataFrame([{"Team": f"Team {len(teams_df)+i+1}"} for i in range(add)])
-    for m in metric_names:
-        new_rows[m] = np.nan
-    teams_df = pd.concat([teams_df, new_rows], ignore_index=True)
-elif len(teams_df) > int(n_teams):
-    teams_df = teams_df.iloc[: int(n_teams)].copy()
+# Only sync when n_teams or metrics list changes
+need_resize = int(n_teams) != int(st.session_state.prev_n_teams)
+need_reindex = metric_names != st.session_state.prev_metric_names
 
-# Ensure metric columns match (if user edits metrics list)
-for m in metric_names:
-    if m not in teams_df.columns:
-        teams_df[m] = np.nan
-drop_cols = [c for c in teams_df.columns if c not in team_cols]
-teams_df = teams_df.drop(columns=drop_cols)
+if need_reindex or need_resize:
+    df = st.session_state.teams_df.copy()
+
+    # Reindex columns WITHOUT losing existing values where names match
+    df = df.reindex(columns=team_cols)
+
+    # Resize rows if needed
+    if len(df) < int(n_teams):
+        add = int(n_teams) - len(df)
+        new_rows = pd.DataFrame([{"Team": f"Team {len(df)+i+1}"} for i in range(add)])
+        for m in metric_names:
+            new_rows[m] = np.nan
+        df = pd.concat([df, new_rows], ignore_index=True)
+    elif len(df) > int(n_teams):
+        df = df.iloc[:int(n_teams)].copy()
+
+    st.session_state.teams_df = df
+    st.session_state.prev_n_teams = int(n_teams)
+    st.session_state.prev_metric_names = metric_names[:]
 
 st.subheader("Enter team values")
 st.caption("Enter raw values. They will be normalized using your Bottom/Top ranges.")
+
 teams_df = st.data_editor(
-    teams_df,
+    st.session_state.teams_df,
     use_container_width=True,
     num_rows="fixed",
     column_config={"Team": st.column_config.TextColumn(required=True)},
     key="teams_editor",
 )
+
+# Save edits back
 st.session_state.teams_df = teams_df
 
 # Team selectors (data source)
@@ -274,3 +298,4 @@ st.download_button(
     file_name=f"{teamA_display.replace(' ','_')}_vs_{teamB_display.replace(' ','_')}_radar.png",
     mime="image/png",
 )
+
