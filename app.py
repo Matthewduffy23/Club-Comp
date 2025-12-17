@@ -142,7 +142,6 @@ def draw_radar(labels, A_r, B_r, teamA_name, teamA_sub, teamB_name, teamB_sub, t
     ax.set_rlim(0, 100)
 
     # ---- NO MIDDLE TITLE ----
-    # Left/Right team headers (bigger)
     fig.text(0.10, 0.95, teamA_name, ha="left", va="top",
              fontsize=26, fontweight="bold", color=COL_A)
     fig.text(0.10, 0.90, teamA_sub, ha="left", va="top",
@@ -155,13 +154,16 @@ def draw_radar(labels, A_r, B_r, teamA_name, teamA_sub, teamB_name, teamB_sub, t
 
     return fig
 
+# ---- Persist edits immediately to avoid the "type twice" issue ----
+def persist_teams_editor():
+    st.session_state.teams_df = st.session_state["teams_editor"]
+
 # ----------------- UI -----------------
 with st.sidebar:
     st.header("Setup")
 
     theme = st.radio("Theme", ["Light", "Dark"], index=0, horizontal=True)
 
-    # team header text inputs
     teamA_display = st.text_input("Team A name (red)", "Swansea")
     teamA_sub = st.text_input("Team A subheading", "Championship • 2024/25")
 
@@ -170,18 +172,18 @@ with st.sidebar:
 
     n_teams = st.number_input("How many teams will you enter?", min_value=2, max_value=50, value=6, step=1)
 
-    # Optional: deliberate reset button (so resets happen only when you want)
     if st.button("Reset team inputs"):
         st.session_state.pop("teams_df", None)
         st.session_state.pop("prev_n_teams", None)
         st.session_state.pop("prev_metric_names", None)
+        st.session_state.pop("teams_editor", None)
         st.rerun()
 
     st.divider()
     st.subheader("Metrics + Bottom/Top")
     st.caption("Edit Bottom/Top and whether lower values should score higher on the radar.")
 
-# Initialize session state tables
+# Initialize metrics table
 if "metrics_df" not in st.session_state:
     st.session_state.metrics_df = pd.DataFrame(DEFAULT_METRICS)
 
@@ -249,13 +251,11 @@ teams_df = st.data_editor(
     num_rows="fixed",
     column_config={"Team": st.column_config.TextColumn(required=True)},
     key="teams_editor",
+    on_change=persist_teams_editor,
 )
 
-# Save edits back
-st.session_state.teams_df = teams_df
-
 # Team selectors (data source)
-team_names = teams_df["Team"].fillna("").tolist()
+team_names = st.session_state.teams_df["Team"].fillna("").tolist()
 c1, c2 = st.columns([1, 1])
 with c1:
     teamA_pick = st.selectbox("Data Team A (red polygon)", team_names, index=0)
@@ -263,8 +263,8 @@ with c2:
     teamB_pick = st.selectbox("Data Team B (blue polygon)", team_names, index=1 if len(team_names) > 1 else 0)
 
 # Build radar
-rowA = teams_df[teams_df["Team"] == teamA_pick].iloc[0]
-rowB = teams_df[teams_df["Team"] == teamB_pick].iloc[0]
+rowA = st.session_state.teams_df[st.session_state.teams_df["Team"] == teamA_pick].iloc[0]
+rowB = st.session_state.teams_df[st.session_state.teams_df["Team"] == teamB_pick].iloc[0]
 
 labels = metric_names
 A_r, B_r = [], []
@@ -298,4 +298,5 @@ st.download_button(
     file_name=f"{teamA_display.replace(' ','_')}_vs_{teamB_display.replace(' ','_')}_radar.png",
     mime="image/png",
 )
+
 
