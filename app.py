@@ -41,13 +41,11 @@ DEFAULT_METRICS = [
     {"Metric": "Long Passes",      "Bottom": 10,   "Top": 120,  "Lower is better": False},
 ]
 
-# team colors
 COL_A = "#C81E1E"
 COL_B = "#1D4ED8"
 FILL_A = (200/255, 30/255, 30/255, 0.55)
 FILL_B = (29/255, 78/255, 216/255, 0.55)
 
-# radar geometry
 NUM_RINGS = 11
 INNER_HOLE = 10
 ring_edges = np.linspace(INNER_HOLE, 100, NUM_RINGS)
@@ -64,7 +62,6 @@ def to_pct(value, vmin, vmax, lower_is_better=False):
     return (100.0 - pct) if lower_is_better else pct
 
 def draw_radar(labels, A_r, B_r, teamA_name, teamA_sub, teamB_name, teamB_sub, theme="Light"):
-    # ---- theme ----
     if theme == "Dark":
         PAGE_BG = "#0a0f1c"
         AX_BG = "#0a0f1c"
@@ -103,7 +100,6 @@ def draw_radar(labels, A_r, B_r, teamA_name, teamA_sub, teamB_name, teamB_sub, t
     for s in ax.spines.values():
         s.set_visible(False)
 
-    # Alternating ring bands (outer starts as OUTER color)
     for i in range(NUM_RINGS - 1):
         r0, r1 = ring_edges[i], ring_edges[i + 1]
         steps_from_outer = (NUM_RINGS - 2) - i
@@ -112,12 +108,10 @@ def draw_radar(labels, A_r, B_r, teamA_name, teamA_sub, teamB_name, teamB_sub, t
                             transform=ax.transData._b, facecolor=band,
                             edgecolor="none", zorder=0.8))
 
-    # Ring outlines
     ring_t = np.linspace(0, 2*np.pi, 361)
     for r in ring_edges:
         ax.plot(ring_t, np.full_like(ring_t, r), color=RING_COLOR, lw=1.0, zorder=0.9)
 
-    # Labels outside
     OUTER_LABEL_R = 106
     for ang, lab in zip(theta, labels):
         rot = np.degrees(-ang + np.pi/2) - 90
@@ -128,11 +122,9 @@ def draw_radar(labels, A_r, B_r, teamA_name, teamA_sub, teamB_name, teamB_sub, t
                 ha="center", va="center", fontsize=10, fontweight=650,
                 color=LABEL_COLOR, clip_on=False)
 
-    # Center hole
     ax.add_artist(Circle((0, 0), radius=INNER_HOLE - 0.6,
                          transform=ax.transData._b, color=PAGE_BG, ec="none", zorder=1.2))
 
-    # Polygons
     ax.plot(theta_closed, Ar, color=COL_A, lw=2.4, zorder=3)
     ax.fill(theta_closed, Ar, color=FILL_A, zorder=2.5)
 
@@ -141,7 +133,6 @@ def draw_radar(labels, A_r, B_r, teamA_name, teamA_sub, teamB_name, teamB_sub, t
 
     ax.set_rlim(0, 100)
 
-    # ---- NO MIDDLE TITLE ----
     fig.text(0.10, 0.95, teamA_name, ha="left", va="top",
              fontsize=26, fontweight="bold", color=COL_A)
     fig.text(0.10, 0.90, teamA_sub, ha="left", va="top",
@@ -154,14 +145,10 @@ def draw_radar(labels, A_r, B_r, teamA_name, teamA_sub, teamB_name, teamB_sub, t
 
     return fig
 
-# ---- Persist edits immediately to avoid the "type twice" issue ----
-def persist_teams_editor():
-    st.session_state.teams_df = st.session_state["teams_editor"]
 
-# ----------------- UI -----------------
+# ----------------- Sidebar -----------------
 with st.sidebar:
     st.header("Setup")
-
     theme = st.radio("Theme", ["Light", "Dark"], index=0, horizontal=True)
 
     teamA_display = st.text_input("Team A name (red)", "Swansea")
@@ -173,62 +160,65 @@ with st.sidebar:
     n_teams = st.number_input("How many teams will you enter?", min_value=2, max_value=50, value=6, step=1)
 
     if st.button("Reset team inputs"):
-        st.session_state.pop("teams_df", None)
-        st.session_state.pop("prev_n_teams", None)
-        st.session_state.pop("prev_metric_names", None)
-        st.session_state.pop("teams_editor", None)
+        for k in ["metrics_df", "teams_df", "inputs_ready"]:
+            st.session_state.pop(k, None)
         st.rerun()
 
-    st.divider()
-    st.subheader("Metrics + Bottom/Top")
-    st.caption("Edit Bottom/Top and whether lower values should score higher on the radar.")
-
-# Initialize metrics table
+# ----------------- State init -----------------
 if "metrics_df" not in st.session_state:
     st.session_state.metrics_df = pd.DataFrame(DEFAULT_METRICS)
 
-metrics_df = st.data_editor(
-    st.session_state.metrics_df,
-    use_container_width=True,
-    num_rows="fixed",
-    column_config={
-        "Metric": st.column_config.TextColumn(required=True),
-        "Bottom": st.column_config.NumberColumn(required=True),
-        "Top": st.column_config.NumberColumn(required=True),
-        "Lower is better": st.column_config.CheckboxColumn(required=True),
-    },
-    key="metrics_editor",
-)
-st.session_state.metrics_df = metrics_df
-
-# Create team input table
-metric_names = metrics_df["Metric"].tolist()
-team_cols = ["Team"] + metric_names
-
-# Track previous settings to avoid wiping inputs on rerun
-if "prev_n_teams" not in st.session_state:
-    st.session_state.prev_n_teams = int(n_teams)
-if "prev_metric_names" not in st.session_state:
-    st.session_state.prev_metric_names = metric_names[:]
-
-# Initialize teams_df once
 if "teams_df" not in st.session_state:
+    # build teams df based on current metrics
+    metric_names_init = st.session_state.metrics_df["Metric"].tolist()
     base = pd.DataFrame([{"Team": f"Team {i+1}"} for i in range(int(n_teams))])
-    for m in metric_names:
+    for m in metric_names_init:
         base[m] = np.nan
     st.session_state.teams_df = base
 
-# Only sync when n_teams or metrics list changes
-need_resize = int(n_teams) != int(st.session_state.prev_n_teams)
-need_reindex = metric_names != st.session_state.prev_metric_names
+# If team count changes, resize rows but keep values
+teams_df = st.session_state.teams_df.copy()
+if len(teams_df) < int(n_teams):
+    add = int(n_teams) - len(teams_df)
+    new_rows = pd.DataFrame([{"Team": f"Team {len(teams_df)+i+1}"} for i in range(add)])
+    for c in teams_df.columns:
+        if c != "Team":
+            new_rows[c] = np.nan
+    teams_df = pd.concat([teams_df, new_rows], ignore_index=True)
+elif len(teams_df) > int(n_teams):
+    teams_df = teams_df.iloc[:int(n_teams)].copy()
+st.session_state.teams_df = teams_df
 
-if need_reindex or need_resize:
+
+# ----------------- Forms (this stops the "type twice" issue) -----------------
+st.subheader("Metrics + Bottom/Top")
+with st.form("metrics_form", clear_on_submit=False):
+    metrics_df = st.data_editor(
+        st.session_state.metrics_df,
+        use_container_width=True,
+        num_rows="fixed",
+        column_config={
+            "Metric": st.column_config.TextColumn(required=True),
+            "Bottom": st.column_config.NumberColumn(required=True),
+            "Top": st.column_config.NumberColumn(required=True),
+            "Lower is better": st.column_config.CheckboxColumn(required=True),
+        },
+        key="metrics_editor_form",
+    )
+    metrics_submit = st.form_submit_button("Save metrics")
+
+if metrics_submit:
+    # Save metrics
+    st.session_state.metrics_df = metrics_df
+
+    # Rebuild/align team table columns to match metrics (preserve overlap)
+    metric_names = st.session_state.metrics_df["Metric"].tolist()
+    desired_cols = ["Team"] + metric_names
+
     df = st.session_state.teams_df.copy()
+    df = df.reindex(columns=desired_cols)
 
-    # Reindex columns WITHOUT losing existing values where names match
-    df = df.reindex(columns=team_cols)
-
-    # Resize rows if needed
+    # Ensure row count matches n_teams
     if len(df) < int(n_teams):
         add = int(n_teams) - len(df)
         new_rows = pd.DataFrame([{"Team": f"Team {len(df)+i+1}"} for i in range(add)])
@@ -239,32 +229,43 @@ if need_reindex or need_resize:
         df = df.iloc[:int(n_teams)].copy()
 
     st.session_state.teams_df = df
-    st.session_state.prev_n_teams = int(n_teams)
-    st.session_state.prev_metric_names = metric_names[:]
+    st.success("Saved metrics. Team table updated.")
+
 
 st.subheader("Enter team values")
-st.caption("Enter raw values. They will be normalized using your Bottom/Top ranges.")
+with st.form("teams_form", clear_on_submit=False):
+    teams_df_edit = st.data_editor(
+        st.session_state.teams_df,
+        use_container_width=True,
+        num_rows="fixed",
+        column_config={"Team": st.column_config.TextColumn(required=True)},
+        key="teams_editor_form",
+    )
+    update = st.form_submit_button("Update radar")
 
-teams_df = st.data_editor(
-    st.session_state.teams_df,
-    use_container_width=True,
-    num_rows="fixed",
-    column_config={"Team": st.column_config.TextColumn(required=True)},
-    key="teams_editor",
-    on_change=persist_teams_editor,
-)
+if update:
+    st.session_state.teams_df = teams_df_edit
+    st.session_state.inputs_ready = True
 
-# Team selectors (data source)
-team_names = st.session_state.teams_df["Team"].fillna("").tolist()
+# ----------------- Radar render (only after Update radar) -----------------
+if not st.session_state.get("inputs_ready", False):
+    st.info("Enter values, then click **Update radar** (no more typing twice).")
+    st.stop()
+
+metrics_df = st.session_state.metrics_df
+teams_df = st.session_state.teams_df
+
+metric_names = metrics_df["Metric"].tolist()
+team_names = teams_df["Team"].fillna("").tolist()
+
 c1, c2 = st.columns([1, 1])
 with c1:
     teamA_pick = st.selectbox("Data Team A (red polygon)", team_names, index=0)
 with c2:
     teamB_pick = st.selectbox("Data Team B (blue polygon)", team_names, index=1 if len(team_names) > 1 else 0)
 
-# Build radar
-rowA = st.session_state.teams_df[st.session_state.teams_df["Team"] == teamA_pick].iloc[0]
-rowB = st.session_state.teams_df[st.session_state.teams_df["Team"] == teamB_pick].iloc[0]
+rowA = teams_df[teams_df["Team"] == teamA_pick].iloc[0]
+rowB = teams_df[teams_df["Team"] == teamB_pick].iloc[0]
 
 labels = metric_names
 A_r, B_r = [], []
@@ -298,6 +299,7 @@ st.download_button(
     file_name=f"{teamA_display.replace(' ','_')}_vs_{teamB_display.replace(' ','_')}_radar.png",
     mime="image/png",
 )
+
 
 
 
