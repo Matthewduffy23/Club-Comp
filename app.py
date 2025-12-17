@@ -8,7 +8,7 @@ import io
 st.set_page_config(page_title="Club Radar Comparison", layout="wide")
 st.title("Club Comparison — Radar")
 
-# ----------------- Styling (optional) -----------------
+# ----------------- Styling (tabs optional) -----------------
 st.markdown(
     """
     <style>
@@ -41,37 +41,58 @@ DEFAULT_METRICS = [
     {"Metric": "Long Passes",      "Bottom": 10,   "Top": 120,  "Lower is better": False},
 ]
 
-COL_A = "#C81E1E"  # red
-COL_B = "#1D4ED8"  # blue
+# team colors
+COL_A = "#C81E1E"
+COL_B = "#1D4ED8"
 FILL_A = (200/255, 30/255, 30/255, 0.55)
 FILL_B = (29/255, 78/255, 216/255, 0.55)
 
+# radar geometry
 NUM_RINGS = 11
 INNER_HOLE = 10
 ring_edges = np.linspace(INNER_HOLE, 100, NUM_RINGS)
 
 def to_pct(value, vmin, vmax, lower_is_better=False):
-    """Map raw value to 0..100, respecting bottom/top and lower-is-better flag."""
     if value is None or value == "" or pd.isna(value):
         return np.nan
     value = float(value)
     if vmax == vmin:
         pct = 50.0
     else:
-        # clamp
-        value = max(min(value, vmax), vmin)
+        value = max(min(value, vmax), vmin)  # clamp
         pct = (value - vmin) / (vmax - vmin) * 100.0
     return (100.0 - pct) if lower_is_better else pct
 
-def draw_radar(labels, A_r, B_r, title, subtitle, teamA_name, teamB_name):
+def draw_radar(labels, A_r, B_r, teamA_name, teamA_sub, teamB_name, teamB_sub, theme="Light"):
+    # ---- theme ----
+    if theme == "Dark":
+        PAGE_BG = "#0a0f1c"
+        AX_BG = "#0a0f1c"
+        GRID_BAND_OUTER = "#162235"
+        GRID_BAND_INNER = "#0d1524"
+        RING_COLOR = "#3a4050"
+        LABEL_COLOR = "#f5f5f5"
+        SUB_COLOR = "#cbd5e1"
+    else:
+        PAGE_BG = "#ffffff"
+        AX_BG = "#ffffff"
+        GRID_BAND_OUTER = "#e5e7eb"
+        GRID_BAND_INNER = "#ffffff"
+        RING_COLOR = "#d1d5db"
+        LABEL_COLOR = "#0f172a"
+        SUB_COLOR = "#475569"
+
     N = len(labels)
     theta = np.linspace(0, 2*np.pi, N, endpoint=False)
     theta_closed = np.concatenate([theta, theta[:1]])
     Ar = np.concatenate([A_r, A_r[:1]])
     Br = np.concatenate([B_r, B_r[:1]])
 
-    fig = plt.figure(figsize=(12.5, 7.5), dpi=220)
+    fig = plt.figure(figsize=(12.6, 7.6), dpi=220)
+    fig.patch.set_facecolor(PAGE_BG)
+
     ax = plt.subplot(111, polar=True)
+    ax.set_facecolor(AX_BG)
     ax.set_theta_offset(np.pi/2)
     ax.set_theta_direction(-1)
 
@@ -82,18 +103,19 @@ def draw_radar(labels, A_r, B_r, title, subtitle, teamA_name, teamB_name):
     for s in ax.spines.values():
         s.set_visible(False)
 
-    # Alternating ring bands
-    for i in range(NUM_RINGS-1):
-        r0, r1 = ring_edges[i], ring_edges[i+1]
-        band = "#E5E7EB" if i % 2 == 0 else "#FFFFFF"
-        ax.add_artist(Wedge((0,0), r1, 0, 360, width=(r1-r0),
+    # Alternating ring bands (outer starts as OUTER color)
+    for i in range(NUM_RINGS - 1):
+        r0, r1 = ring_edges[i], ring_edges[i + 1]
+        steps_from_outer = (NUM_RINGS - 2) - i
+        band = GRID_BAND_OUTER if (steps_from_outer % 2 == 0) else GRID_BAND_INNER
+        ax.add_artist(Wedge((0, 0), r1, 0, 360, width=(r1 - r0),
                             transform=ax.transData._b, facecolor=band,
                             edgecolor="none", zorder=0.8))
 
     # Ring outlines
     ring_t = np.linspace(0, 2*np.pi, 361)
     for r in ring_edges:
-        ax.plot(ring_t, np.full_like(ring_t, r), color="#D1D5DB", lw=1.0, zorder=0.9)
+        ax.plot(ring_t, np.full_like(ring_t, r), color=RING_COLOR, lw=1.0, zorder=0.9)
 
     # Labels outside
     OUTER_LABEL_R = 106
@@ -103,36 +125,48 @@ def draw_radar(labels, A_r, B_r, title, subtitle, teamA_name, teamB_name):
         if rot_norm > 90 or rot_norm < -90:
             rot += 180
         ax.text(ang, OUTER_LABEL_R, lab, rotation=rot, rotation_mode="anchor",
-                ha="center", va="center", fontsize=10, fontweight=600, clip_on=False)
+                ha="center", va="center", fontsize=10, fontweight=650,
+                color=LABEL_COLOR, clip_on=False)
 
     # Center hole
-    ax.add_artist(Circle((0,0), radius=INNER_HOLE-0.6, transform=ax.transData._b,
-                         color="white", zorder=1.2, ec="none"))
+    ax.add_artist(Circle((0, 0), radius=INNER_HOLE - 0.6,
+                         transform=ax.transData._b, color=PAGE_BG, ec="none", zorder=1.2))
 
     # Polygons
-    ax.plot(theta_closed, Ar, color=COL_A, lw=2.2, zorder=3)
+    ax.plot(theta_closed, Ar, color=COL_A, lw=2.4, zorder=3)
     ax.fill(theta_closed, Ar, color=FILL_A, zorder=2.5)
 
-    ax.plot(theta_closed, Br, color=COL_B, lw=2.2, zorder=3)
+    ax.plot(theta_closed, Br, color=COL_B, lw=2.4, zorder=3)
     ax.fill(theta_closed, Br, color=FILL_B, zorder=2.5)
 
     ax.set_rlim(0, 100)
 
-    # Titles
-    fig.text(0.5, 0.97, title, ha="center", va="top", fontsize=18, fontweight="bold")
-    fig.text(0.5, 0.94, subtitle, ha="center", va="top", fontsize=11, color="#374151")
+    # ---- NO MIDDLE TITLE ----
+    # Left/Right team headers (bigger)
+    fig.text(0.10, 0.965, teamA_name, ha="left", va="top",
+             fontsize=26, fontweight="bold", color=COL_A)
+    fig.text(0.10, 0.932, teamA_sub, ha="left", va="top",
+             fontsize=11, color=SUB_COLOR)
 
-    # Team names
-    fig.text(0.12, 0.93, teamA_name, ha="left", va="top", fontsize=14, fontweight="bold", color=COL_A)
-    fig.text(0.88, 0.93, teamB_name, ha="right", va="top", fontsize=14, fontweight="bold", color=COL_B)
+    fig.text(0.90, 0.965, teamB_name, ha="right", va="top",
+             fontsize=26, fontweight="bold", color=COL_B)
+    fig.text(0.90, 0.932, teamB_sub, ha="right", va="top",
+             fontsize=11, color=SUB_COLOR)
 
     return fig
 
 # ----------------- UI -----------------
 with st.sidebar:
     st.header("Setup")
-    chart_title = st.text_input("Chart title", "Club Comparison Radar")
-    chart_subtitle = st.text_input("Subtitle", "Manual ranges • 0–100 normalized")
+
+    theme = st.radio("Theme", ["Light", "Dark"], index=0, horizontal=True)
+
+    # team header text inputs
+    teamA_display = st.text_input("Team A name (red)", "Swansea")
+    teamA_sub = st.text_input("Team A subheading", "Championship • 2024/25")
+
+    teamB_display = st.text_input("Team B name (blue)", "Team 2")
+    teamB_sub = st.text_input("Team B subheading", "Championship • 2024/25")
 
     n_teams = st.number_input("How many teams will you enter?", min_value=2, max_value=50, value=6, step=1)
 
@@ -196,19 +230,17 @@ teams_df = st.data_editor(
 )
 st.session_state.teams_df = teams_df
 
-# Team selectors
+# Team selectors (data source)
 team_names = teams_df["Team"].fillna("").tolist()
-col1, col2, col3 = st.columns([1,1,2])
-with col1:
-    teamA = st.selectbox("Team A (red)", team_names, index=0)
-with col2:
-    teamB = st.selectbox("Team B (blue)", team_names, index=1 if len(team_names) > 1 else 0)
-with col3:
-    st.caption("Tip: set realistic Bottom/Top. Values outside range are clamped.")
+c1, c2 = st.columns([1, 1])
+with c1:
+    teamA_pick = st.selectbox("Data Team A (red polygon)", team_names, index=0)
+with c2:
+    teamB_pick = st.selectbox("Data Team B (blue polygon)", team_names, index=1 if len(team_names) > 1 else 0)
 
 # Build radar
-rowA = teams_df[teams_df["Team"] == teamA].iloc[0]
-rowB = teams_df[teams_df["Team"] == teamB].iloc[0]
+rowA = teams_df[teams_df["Team"] == teamA_pick].iloc[0]
+rowB = teams_df[teams_df["Team"] == teamB_pick].iloc[0]
 
 labels = metric_names
 A_r, B_r = [], []
@@ -231,9 +263,14 @@ if bad_ranges:
 A_r = np.array(A_r, dtype=float)
 B_r = np.array(B_r, dtype=float)
 
-fig = draw_radar(labels, A_r, B_r, chart_title, chart_subtitle, teamA, teamB)
+fig = draw_radar(labels, A_r, B_r, teamA_display, teamA_sub, teamB_display, teamB_sub, theme=theme)
 st.pyplot(fig, use_container_width=True)
 
 buf = io.BytesIO()
 fig.savefig(buf, format="png", dpi=300, bbox_inches="tight")
-st.download_button("⬇️ Download PNG", data=buf.getvalue(), file_name=f"{teamA}_vs_{teamB}_radar.png", mime="image/png")
+st.download_button(
+    "⬇️ Download PNG",
+    data=buf.getvalue(),
+    file_name=f"{teamA_display.replace(' ','_')}_vs_{teamB_display.replace(' ','_')}_radar.png",
+    mime="image/png",
+)
